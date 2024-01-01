@@ -1,6 +1,7 @@
 import 'package:barcode_scan2/barcode_scan2.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 
 class BarcodeScannerPage extends StatefulWidget {
   @override
@@ -24,13 +25,14 @@ class _BarcodeScannerPageState extends State<BarcodeScannerPage> {
         // If barcode exists, display information in a toast
         showToast('Barcode found! Displaying information...');
         // Add logic to fetch and display information from Firestore if needed
+        fetchAndDisplayInformation(scannedBarcode);
       } else {
         // If barcode doesn't exist, ask the user to add details
         bool userWantsToAddDetails = await showAddDetailsDialog();
 
         if (userWantsToAddDetails) {
           // Add logic to handle user input for product name and price
-          // and save it to Firestore
+          await addProductDetails(scannedBarcode);
         }
       }
     } catch (e) {
@@ -50,6 +52,95 @@ class _BarcodeScannerPageState extends State<BarcodeScannerPage> {
       print('Error checking barcode in Firestore: $e');
       return false;
     }
+  }
+
+  Future<void> fetchAndDisplayInformation(String barcode) async {
+    try {
+      var document = await FirebaseFirestore.instance
+          .collection('barcodes')
+          .doc(barcode)
+          .get();
+
+      if (document.exists) {
+        String productName =
+            document['productName'] ?? 'Product Name not available';
+        double productPrice = document['productPrice'] ?? 0.0;
+
+        // Display the information (implement your own UI logic)
+        showDialog(
+          context: context,
+          builder: (BuildContext context) {
+            return AlertDialog(
+              title: Text('Product Information'),
+              content: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Product Name: $productName'),
+                  Text('Product Price: \$${productPrice.toStringAsFixed(2)}'),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                  },
+                  child: Text('Close'),
+                ),
+              ],
+            );
+          },
+        );
+      } else {
+        print('Document does not exist');
+        // Handle the case where the document does not exist
+      }
+    } catch (e) {
+      print('Error fetching information from Firestore: $e');
+    }
+  }
+
+  Future<void> addProductDetails(String barcode) async {
+    // Show a dialog to get user input for product name and price
+    String productName = await showInputDialog('Enter product name');
+    double productPrice =
+        await showInputDialog('Enter product price', isPrice: true);
+
+    // Save the details to Firestore
+    try {
+      await FirebaseFirestore.instance.collection('barcodes').doc(barcode).set({
+        'code': barcode,
+        'productName': productName,
+        'productPrice': productPrice,
+      });
+
+      showToast('Product details added successfully!');
+    } catch (e) {
+      print('Error adding product details to Firestore: $e');
+    }
+  }
+
+  Future<String> showInputDialog(String title, {bool isPrice = false}) async {
+    TextEditingController inputController = TextEditingController();
+    return await showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text(title),
+          content: TextField(
+            controller: inputController,
+            keyboardType: isPrice ? TextInputType.number : TextInputType.text,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop(inputController.text);
+              },
+              child: Text('OK'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Future<bool> showAddDetailsDialog() async {
@@ -80,9 +171,15 @@ class _BarcodeScannerPageState extends State<BarcodeScannerPage> {
   }
 
   void showToast(String message) {
-    // Add logic to display a toast message
-    // You can use a package like fluttertoast or implement your own toast widget
-    print(message);
+    Fluttertoast.showToast(
+      msg: message,
+      toastLength: Toast.LENGTH_SHORT,
+      gravity: ToastGravity.BOTTOM,
+      timeInSecForIosWeb: 1,
+      backgroundColor: Colors.black54,
+      textColor: Colors.white,
+      fontSize: 16.0,
+    );
   }
 
   @override
