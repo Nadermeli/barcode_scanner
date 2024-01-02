@@ -1,7 +1,7 @@
 import 'package:barcode_scan2/barcode_scan2.dart';
 import 'package:flutter/material.dart';
-import 'package:sqflite/sqflite.dart';
-import 'package:path/path.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 class BarcodeScannerPage extends StatefulWidget {
   @override
@@ -10,26 +10,6 @@ class BarcodeScannerPage extends StatefulWidget {
 
 class _BarcodeScannerPageState extends State<BarcodeScannerPage> {
   String scannedBarcode = '';
-  late Database database;
-
-  @override
-  void initState() {
-    super.initState();
-    _initDatabase();
-  }
-
-  Future<void> _initDatabase() async {
-    WidgetsFlutterBinding.ensureInitialized();
-    database = await openDatabase(
-      join(await getDatabasesPath(), 'barcode_database.db'),
-      onCreate: (db, version) {
-        return db.execute(
-          'CREATE TABLE barcodes(code TEXT PRIMARY KEY, productName TEXT, productPrice REAL)',
-        );
-      },
-      version: 1,
-    );
-  }
 
   Future<void> scanBarcode() async {
     try {
@@ -38,8 +18,8 @@ class _BarcodeScannerPageState extends State<BarcodeScannerPage> {
         scannedBarcode = result.rawContent;
       });
 
-      // Check if the barcode exists in the local database
-      bool barcodeExists = await checkBarcodeInDatabase(scannedBarcode);
+      // Check if the barcode exists on the server
+      bool barcodeExists = await checkBarcodeOnServer(scannedBarcode);
 
       if (barcodeExists) {
         // If barcode exists, display information
@@ -58,33 +38,34 @@ class _BarcodeScannerPageState extends State<BarcodeScannerPage> {
     }
   }
 
-  Future<bool> checkBarcodeInDatabase(String barcode) async {
+  Future<bool> checkBarcodeOnServer(String barcode) async {
     try {
-      List<Map<String, dynamic>> result = await database.query(
-        'barcodes',
-        where: 'code = ?',
-        whereArgs: [barcode],
-      );
+      final response = await http
+          .get('http://barcode-scanner.42web.io/api.php?code=$barcode' as Uri);
 
-      return result.isNotEmpty;
+      if (response.statusCode == 200) {
+        Map<String, dynamic> result = json.decode(response.body);
+        return result.containsKey('code');
+      } else {
+        print('Failed to check barcode on the server');
+        return false;
+      }
     } catch (e) {
-      print('Error checking barcode in database: $e');
+      print('Error checking barcode on the server: $e');
       return false;
     }
   }
 
   Future<void> fetchAndDisplayInformation(String barcode) async {
     try {
-      List<Map<String, dynamic>> result = await database.query(
-        'barcodes',
-        where: 'code = ?',
-        whereArgs: [barcode],
-      );
+      final response = await http
+          .get('http://barcode-scanner.42web.io/api.php?code=$barcode');
 
-      if (result.isNotEmpty) {
+      if (response.statusCode == 200) {
+        Map<String, dynamic> result = json.decode(response.body);
         String productName =
-            result[0]['productName'] ?? 'Product Name not available';
-        double productPrice = result[0]['productPrice'] ?? 0.0;
+            result['productName'] ?? 'Product Name not available';
+        double productPrice = result['productPrice'] ?? 0.0;
 
         // Display the information (implement your own UI logic)
         showDialog(
@@ -111,10 +92,10 @@ class _BarcodeScannerPageState extends State<BarcodeScannerPage> {
           },
         );
       } else {
-        print('Record not found in the database');
+        print('Failed to fetch information from the server');
       }
     } catch (e) {
-      print('Error fetching information from database: $e');
+      print('Error fetching information from the server: $e');
     }
   }
 
@@ -124,17 +105,25 @@ class _BarcodeScannerPageState extends State<BarcodeScannerPage> {
     double productPrice =
         await showInputDialog('Enter product price', isPrice: true);
 
-    // Save the details to the local database
+    // Save the details to the server
     try {
-      await database.insert('barcodes', {
-        'code': barcode,
-        'productName': productName,
-        'productPrice': productPrice,
-      });
+      final response =
+          await http.post('http://barcode-scanner.42web.io/api.php',
+              headers: {'Content-Type': 'application/json'},
+              body: json.encode({
+                'code': barcode,
+                'productName': productName,
+                'productPrice': productPrice,
+              }));
 
-      showToast('Product details added successfully!');
+      if (response.statusCode == 200) {
+        Map<String, dynamic> result = json.decode(response.body);
+        showToast(result['message']);
+      } else {
+        print('Failed to add product details to the server');
+      }
     } catch (e) {
-      print('Error adding product details to database: $e');
+      print('Error adding product details to the server: $e');
     }
   }
 
@@ -190,7 +179,7 @@ class _BarcodeScannerPageState extends State<BarcodeScannerPage> {
   }
 
   void showToast(String message) {
-    ScaffoldMessenger.of(context as BuildContext).showSnackBar(SnackBar(
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(message),
       duration: Duration(seconds: 2),
     ));
