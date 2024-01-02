@@ -1,7 +1,7 @@
 import 'package:barcode_scan2/barcode_scan2.dart';
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:fluttertoast/fluttertoast.dart';
+import 'package:sqflite/sqflite.dart';
+import 'package:path/path.dart';
 
 class BarcodeScannerPage extends StatefulWidget {
   @override
@@ -10,6 +10,26 @@ class BarcodeScannerPage extends StatefulWidget {
 
 class _BarcodeScannerPageState extends State<BarcodeScannerPage> {
   String scannedBarcode = '';
+  late Database database;
+
+  @override
+  void initState() {
+    super.initState();
+    _initDatabase();
+  }
+
+  Future<void> _initDatabase() async {
+    WidgetsFlutterBinding.ensureInitialized();
+    database = await openDatabase(
+      join(await getDatabasesPath(), 'barcode_database.db'),
+      onCreate: (db, version) {
+        return db.execute(
+          'CREATE TABLE barcodes(code TEXT PRIMARY KEY, productName TEXT, productPrice REAL)',
+        );
+      },
+      version: 1,
+    );
+  }
 
   Future<void> scanBarcode() async {
     try {
@@ -18,13 +38,11 @@ class _BarcodeScannerPageState extends State<BarcodeScannerPage> {
         scannedBarcode = result.rawContent;
       });
 
-      // Check if the barcode exists in Firestore
-      bool barcodeExists = await checkBarcodeInFirestore(scannedBarcode);
+      // Check if the barcode exists in the local database
+      bool barcodeExists = await checkBarcodeInDatabase(scannedBarcode);
 
       if (barcodeExists) {
-        // If barcode exists, display information in a toast
-        showToast('Barcode found! Displaying information...');
-        // Add logic to fetch and display information from Firestore if needed
+        // If barcode exists, display information
         fetchAndDisplayInformation(scannedBarcode);
       } else {
         // If barcode doesn't exist, ask the user to add details
@@ -40,31 +58,33 @@ class _BarcodeScannerPageState extends State<BarcodeScannerPage> {
     }
   }
 
-  Future<bool> checkBarcodeInFirestore(String barcode) async {
+  Future<bool> checkBarcodeInDatabase(String barcode) async {
     try {
-      var query = await FirebaseFirestore.instance
-          .collection('barcodes')
-          .where('code', isEqualTo: barcode)
-          .get();
+      List<Map<String, dynamic>> result = await database.query(
+        'barcodes',
+        where: 'code = ?',
+        whereArgs: [barcode],
+      );
 
-      return query.docs.isNotEmpty;
+      return result.isNotEmpty;
     } catch (e) {
-      print('Error checking barcode in Firestore: $e');
+      print('Error checking barcode in database: $e');
       return false;
     }
   }
 
   Future<void> fetchAndDisplayInformation(String barcode) async {
     try {
-      var document = await FirebaseFirestore.instance
-          .collection('barcodes')
-          .doc(barcode)
-          .get();
+      List<Map<String, dynamic>> result = await database.query(
+        'barcodes',
+        where: 'code = ?',
+        whereArgs: [barcode],
+      );
 
-      if (document.exists) {
+      if (result.isNotEmpty) {
         String productName =
-            document['productName'] ?? 'Product Name not available';
-        double productPrice = document['productPrice'] ?? 0.0;
+            result[0]['productName'] ?? 'Product Name not available';
+        double productPrice = result[0]['productPrice'] ?? 0.0;
 
         // Display the information (implement your own UI logic)
         showDialog(
@@ -91,11 +111,10 @@ class _BarcodeScannerPageState extends State<BarcodeScannerPage> {
           },
         );
       } else {
-        print('Document does not exist');
-        // Handle the case where the document does not exist
+        print('Record not found in the database');
       }
     } catch (e) {
-      print('Error fetching information from Firestore: $e');
+      print('Error fetching information from database: $e');
     }
   }
 
@@ -105,9 +124,9 @@ class _BarcodeScannerPageState extends State<BarcodeScannerPage> {
     double productPrice =
         await showInputDialog('Enter product price', isPrice: true);
 
-    // Save the details to Firestore
+    // Save the details to the local database
     try {
-      await FirebaseFirestore.instance.collection('barcodes').doc(barcode).set({
+      await database.insert('barcodes', {
         'code': barcode,
         'productName': productName,
         'productPrice': productPrice,
@@ -115,7 +134,7 @@ class _BarcodeScannerPageState extends State<BarcodeScannerPage> {
 
       showToast('Product details added successfully!');
     } catch (e) {
-      print('Error adding product details to Firestore: $e');
+      print('Error adding product details to database: $e');
     }
   }
 
@@ -171,15 +190,10 @@ class _BarcodeScannerPageState extends State<BarcodeScannerPage> {
   }
 
   void showToast(String message) {
-    Fluttertoast.showToast(
-      msg: message,
-      toastLength: Toast.LENGTH_SHORT,
-      gravity: ToastGravity.BOTTOM,
-      timeInSecForIosWeb: 1,
-      backgroundColor: Colors.black54,
-      textColor: Colors.white,
-      fontSize: 16.0,
-    );
+    ScaffoldMessenger.of(context as BuildContext).showSnackBar(SnackBar(
+      content: Text(message),
+      duration: Duration(seconds: 2),
+    ));
   }
 
   @override
