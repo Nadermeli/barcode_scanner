@@ -59,7 +59,7 @@ class _BarcodeScannerPageState extends State<BarcodeScannerPage> {
   Future<void> fetchAndDisplayInformation(String barcode) async {
     try {
       final response = await http
-          .get('http://barcode-scanner.42web.io/api.php?code=$barcode');
+          .get('http://barcode-scanner.42web.io/api.php?code=$barcode' as Uri);
 
       if (response.statusCode == 200) {
         Map<String, dynamic> result = json.decode(response.body);
@@ -103,12 +103,12 @@ class _BarcodeScannerPageState extends State<BarcodeScannerPage> {
     // Show a dialog to get user input for product name and price
     String productName = await showInputDialog('Enter product name');
     double productPrice =
-        await showInputDialog('Enter product price', isPrice: true);
+        (await showInputDialog('Enter product price', isPrice: true)) as double;
 
     // Save the details to the server
     try {
       final response =
-          await http.post('http://barcode-scanner.42web.io/api.php',
+          await http.post('http://barcode-scanner.42web.io/api.php' as Uri,
               headers: {'Content-Type': 'application/json'},
               body: json.encode({
                 'code': barcode,
