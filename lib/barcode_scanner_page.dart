@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:barcode_scan2/barcode_scan2.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -40,32 +42,50 @@ class _BarcodeScannerPageState extends State<BarcodeScannerPage> {
 
   Future<bool> checkBarcodeOnServer(String barcode) async {
     try {
-      final response = await http
-          .get('http://barcode-scanner.42web.io/api.php?code=$barcode' as Uri);
+      var request = http.Request(
+          'GET',
+          Uri.parse(
+              'https://barcode-nadermeli.000webhostapp.com/api.php?code=$barcode'));
 
+      var response = await request.send();
       if (response.statusCode == 200) {
-        Map<String, dynamic> result = json.decode(response.body);
+        Map<String, dynamic> result =
+            json.decode(await response.stream.bytesToString());
         return result.containsKey('code');
       } else {
         print('Failed to check barcode on the server');
         return false;
       }
     } catch (e) {
-      print('Error checking barcode on the server: $e');
+      if (e is SocketException) {
+        print(
+            'Error: Unable to connect to the server. Please check your internet connection.');
+      } else if (e is HttpException) {
+        print('HTTP error occurred: $e');
+      } else {
+        print('Error checking barcode on the server: $e');
+      }
       return false;
     }
   }
 
   Future<void> fetchAndDisplayInformation(String barcode) async {
     try {
-      final response = await http
-          .get('http://barcode-scanner.42web.io/api.php?code=$barcode' as Uri);
+      print(barcode);
+      var request = http.Request(
+          'GET',
+          Uri.parse(
+              'https://barcode-nadermeli.000webhostapp.com/api.php?code=$barcode'));
+
+      var response = await request.send();
 
       if (response.statusCode == 200) {
-        Map<String, dynamic> result = json.decode(response.body);
+        Map<String, dynamic> result =
+            json.decode(await response.stream.bytesToString());
+        print(result);
         String productName =
             result['productName'] ?? 'Product Name not available';
-        double productPrice = result['productPrice'] ?? 0.0;
+        double productPrice = double.parse(result['productPrice'] ?? 0.0);
 
         // Display the information (implement your own UI logic)
         showDialog(
@@ -102,28 +122,37 @@ class _BarcodeScannerPageState extends State<BarcodeScannerPage> {
   Future<void> addProductDetails(String barcode) async {
     // Show a dialog to get user input for product name and price
     String productName = await showInputDialog('Enter product name');
-    double productPrice =
-        (await showInputDialog('Enter product price', isPrice: true)) as double;
+    String productPrice =
+        await showInputDialog('Enter product price', isPrice: true);
 
     // Save the details to the server
     try {
-      final response =
-          await http.post('http://barcode-scanner.42web.io/api.php' as Uri,
-              headers: {'Content-Type': 'application/json'},
-              body: json.encode({
-                'code': barcode,
-                'productName': productName,
-                'productPrice': productPrice,
-              }));
+      var headers = {
+        'Content-Type': 'application/json',
+      };
+      var request = http.Request(
+          'GET',
+          Uri.parse(
+              'https://barcode-nadermeli.000webhostapp.com/api.php?newcode=$barcode&productName=$productName&productPrice=$productPrice'));
 
+      var response = await request.send();
       if (response.statusCode == 200) {
-        Map<String, dynamic> result = json.decode(response.body);
-        showToast(result['message']);
+        try {
+          Map<String, dynamic> result =
+              json.decode(await response.stream.bytesToString());
+          showToast(result['message']);
+        } catch (e) {
+          print('Error decoding JSON response: $e');
+          showToast('Error decoding server response. Please try again.');
+        }
       } else {
-        print('Failed to add product details to the server');
+        print(
+            'Failed to add product details to the server. Status code: ${response.statusCode}');
+        showToast('Failed to add product details. Please try again.');
       }
     } catch (e) {
       print('Error adding product details to the server: $e');
+      showToast('Error adding product details. Please try again.');
     }
   }
 

@@ -1,11 +1,15 @@
 <?php
-header('Content-Type: application/json');
+header('Content-Type: application/json'); 
 
+// Set CORS headers
+header("Access-Control-Allow-Origin: *");
+header("Access-Control-Allow-Methods: GET, POST");
+header("Access-Control-Allow-Headers: Content-Type");
 // MySQL database credentials
-$host = 'sql205.infinityfree.com';
-$user = 'if0_35714126';
+$host = 'localhost';
+$user = 'id21769254_if0_35714126';
 $password = 'Y3u-jkx4CNuQtCx';
-$database = 'if0_35714126_barcodeScanner';
+$database = 'id21769254_if0_35714126_barcodescanner';
 
 // Create a connection to MySQL
 $connection = new mysqli($host, $user, $password, $database);
@@ -57,24 +61,11 @@ function addProductDetails($code, $productName, $productPrice) {
 
     return $result;
 }
-
+ 
 // Main API logic
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Handle POST requests (addProductDetails)
-    $data = json_decode(file_get_contents('php://input'), true);
-
-    $code = $data['code'];
-    $productName = $data['productName'];
-    $productPrice = $data['productPrice'];
-
-    if (addProductDetails($code, $productName, $productPrice)) {
-        echo json_encode(['message' => 'Product details added successfully']);
-    } else {
-        echo json_encode(['message' => 'Failed to add product details']);
-    }
-} elseif ($_SERVER['REQUEST_METHOD'] === 'GET') {
-    // Handle GET requests (checkBarcode and fetchInformation)
+if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     if (isset($_GET['code'])) {
+        // Check barcode
         $code = $_GET['code'];
 
         if (checkBarcode($code)) {
@@ -83,10 +74,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             echo json_encode(['message' => 'Barcode not found']);
         }
+    } elseif (isset($_GET['productName']) && isset($_GET['productPrice'])) {
+        // Add product details
+        $code = $_GET['newcode'];
+        $productName = $_GET['productName'];
+        $productPrice = $_GET['productPrice'];
+
+        if (addProductDetails($code, $productName, $productPrice)) {
+            echo json_encode(['message' => 'Product details added successfully']);
+        } else {
+            echo json_encode(['message' => 'Failed to add product details']);
+        }
     } else {
-        echo json_encode(['message' => 'Invalid request']);
+        echo json_encode(['message' => 'Invalid request parameters']);
     }
+} else {
+    echo json_encode(['message' => 'Invalid request method']);
 }
+
 
 // Close the MySQL connection
 $connection->close();
